@@ -1,0 +1,20 @@
+# Игнорируем Gradle-специфичные папки
+.gradle/
+gradle/
+
+# Игнорируем папки IDE (IntelliJ IDEA)
+.idea/
+
+# Игнорируем папки с чекпоинтами
+checkpoints/
+
+# Игнорируем файлы и папки Parquet
+*.parquet
+parquet/
+
+# Игнорируем папки savepoints
+savepoints/
+
+gradlew
+
+gradlew.bat
