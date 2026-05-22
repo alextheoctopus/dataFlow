@@ -322,3 +322,79 @@ WINDOW RESULT: [2026-05-22T17:20:20Z - 2026-05-22T17:20:30Z), count=10
 NORMAL — producer отправил 100 обычных событий.
 OUT_OF_ORDER — Flink обновлял одно и то же окно несколько раз.
 LATE — producer выводил DELAYED, SEND [late], SEND [flush-late], а Flink пересчитывал окна.
+
+
+4 лаба
+Реализовать Flink-приложение, состоящее из двух входных потоков и одного итогового вывода:
+1. Реализовать поток событий events с полями: userId, eventType, value, timestamp.
+   Значение userId должно быть от 1 до 100. События должны генерироваться последовательно, так чтобы userId изменялся инкрементально по кругу.
+
+2. Реализовать поток правил rules с полем blockedUser.
+   Этот поток должен периодически генерировать случайный userId от 1 до 100, который считается заблокированным. События не должны быть частыми.
+
+3. Основной поток events необходимо обрабатывать во Flink по ключу userId.
+   Для каждого пользователя нужно хранить статистику в состоянии. В качестве состояния использовать ListState<Double>, где хранятся значения value.
+   При обработке события нужно посчитать сумму value по всем элементам списка для данного пользователя и использовать эту сумму в дальнейшей логике
+
+4. При поступлении нового значения blockedUser пользователь должен считаться заблокированным. Для такоего пользователя накопленная статистика не должна использоваться в дальнейшей обработке.
+
+Для пользовательского состояния настроить StateTtlConfig с TTL = 10 секунд.
+
+В конце обработки периодически выводить текущую сумму value по каждому пользователю (или по активным пользователям);
+
+также собрать fat jar и скопировать его
+после
+команда запуска
+
+docker exec -it flink-jobmanager flink run -d -c org.fibonacci.Lab4TwoStreamsStateJobKt /opt/flink/usrlib/flink-kafka-parquet-lab.jar
+
+docker logs flink-taskmanager --tail 200
+
+результат
+ACTIVE USER SUM: userId=16, sum=8.23, valuesInState=2, lastEventType=login, eventTimestamp=1779471562119
+ACTIVE USER SUM: userId=17, sum=16.79, valuesInState=2, lastEventType=click, eventTimestamp=1779471562185
+ACTIVE USER SUM: userId=18, sum=7.93, valuesInState=2, lastEventType=view, eventTimestamp=1779471562235
+ACTIVE USER SUM: userId=19, sum=14.90, valuesInState=2, lastEventType=purchase, eventTimestamp=1779471562285
+RULE UPDATE: blockedUser=82
+ACTIVE USER SUM: userId=20, sum=10.90, valuesInState=2, lastEventType=login, eventTimestamp=1779471562335
+ACTIVE USER SUM: userId=21, sum=13.75, valuesInState=2, lastEventType=click, eventTimestamp=1779471562501
+ACTIVE USER SUM: userId=22, sum=4.63, valuesInState=2, lastEventType=view, eventTimestamp=1779471562576
+BLOCKED EVENT IGNORED: userId=23, eventType=purchase, value=4.02
+ACTIVE USER SUM: userId=24, sum=8.62, valuesInState=2, lastEventType=login, eventTimestamp=1779471562680
+ACTIVE USER SUM: userId=25, sum=4.69, valuesInState=2, lastEventType=click, eventTimestamp=1779471562730
+ACTIVE USER SUM: userId=26, sum=12.13, valuesInState=2, lastEventType=view, eventTimestamp=1779471562780
+ACTIVE USER SUM: userId=27, sum=5.66, valuesInState=2, lastEventType=purchase, eventTimestamp=1779471562831
+ACTIVE USER SUM: userId=28, sum=13.95, valuesInState=2, lastEventType=login, eventTimestamp=1779471562881
+ACTIVE USER SUM: userId=29, sum=13.03, valuesInState=2, lastEventType=click, eventTimestamp=1779471563555
+ACTIVE USER SUM: userId=30, sum=13.27, valuesInState=2, lastEventType=view, eventTimestamp=1779471563665
+ACTIVE USER SUM: userId=31, sum=15.45, valuesInState=2, lastEventType=purchase, eventTimestamp=1779471563716
+ACTIVE USER SUM: userId=32, sum=19.16, valuesInState=2, lastEventType=login, eventTimestamp=1779471563847
+ACTIVE USER SUM: userId=33, sum=12.39, valuesInState=2, lastEventType=click, eventTimestamp=1779471563924
+BLOCKED EVENT IGNORED: userId=65, eventType=click, value=4.33
+ACTIVE USER SUM: userId=66, sum=13.23, valuesInState=2, lastEventType=view, eventTimestamp=1779471566133
+ACTIVE USER SUM: userId=67, sum=9.64, valuesInState=2, lastEventType=purchase, eventTimestamp=1779471566209
+BLOCKED EVENT IGNORED: userId=79, eventType=purchase, value=8.09
+ACTIVE USER SUM: userId=80, sum=10.17, valuesInState=2, lastEventType=login, eventTimestamp=1779471566875
+ACTIVE USER SUM: userId=81, sum=15.25, valuesInState=2, lastEventType=click, eventTimestamp=1779471566926
+BLOCKED EVENT IGNORED: userId=82, eventType=view, value=7.26
+
+RULE UPDATE: blockedUser=82
+
+Это значит, что второй поток правил реально приходит и обновляет список заблокированных пользователей.
+
+Есть строки:
+
+BLOCKED EVENT IGNORED: userId=82, eventType=view, value=7.26
+
+И ещё:
+
+BLOCKED EVENT IGNORED: userId=65, eventType=click, value=4.33
+BLOCKED EVENT IGNORED: userId=79, eventType=purchase, value=8.09
+
+Это доказывает, что если userId попал в blockedUser, его накопленная статистика дальше не используется.
+
+ACTIVE USER SUM: userId=16, sum=8.23, valuesInState=2
+ACTIVE USER SUM: userId=17, sum=16.79, valuesInState=2
+ACTIVE USER SUM: userId=18, sum=7.93, valuesInState=2
+
+То есть Flink считает сумму value отдельно для каждого userId
